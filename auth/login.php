@@ -130,7 +130,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         <form method="POST" action="">
             <div class="input-group">
                 <label>Email Address</label>
-                <input type="email" name="email" placeholder="you@example.com" required>
+                <input type="email" name="email" placeholder="123@gmail.com" required>
             </div>
             
             <div class="input-group">
