@@ -14,12 +14,15 @@ $ticket_id = $_GET['id'] ?? null;
 
 if (!$ticket_id) { die("Invalid Ticket ID."); }
 
-// 2. Fetch Ticket & User Role in a single trip for performance
-$stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ? AND is_deleted = 0");
+// 2. Fetch Ticket (Removed 'is_deleted = 0' so we can view archived tickets too)
+$stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
 $stmt->execute([$ticket_id]);
 $ticket = $stmt->fetch();
 
-if (!$ticket) { die("Ticket not found or has been archived."); }
+if (!$ticket) { die("Ticket not found in the database."); }
+
+// Check if the ticket is archived
+$is_archived = ($ticket['is_deleted'] == 1);
 
 $role_stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
 $role_stmt->execute([$user_id]);
@@ -35,10 +38,9 @@ if (!$is_admin && !$is_assignee && !$is_creator) {
     die("Access Denied: You do not have authority to view this ticket.");
 }
 
-// 4. Update Logic (Authorized Staff or Admin only)
-if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee)) {
+// 4. Update Logic (Authorized Staff or Admin only, AND ticket must NOT be archived)
+if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee) && !$is_archived) {
     $new_status = $_POST['status'];
-    
     try {
         if ($is_admin) {
             // Admin has FULL authority
@@ -63,45 +65,47 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee)) {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Ticket #<?php echo $ticket['id']; ?></title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: #f3f4f6; padding: 40px; color: #1f2937; }
-        .container { max-width: 700px; margin: auto; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-        
-        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
-        .authority-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 4px 8px; border-radius: 4px; background: #e0e7ff; color: #4338ca; }
-        
-        .badge { padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; }
-        .badge-pending { background: #fffbeb; color: #b45309; }
-        .badge-inprogress { background: #eff6ff; color: #1d4ed8; }
-        .badge-completed { background: #ecfdf5; color: #047857; }
-        
-        label { display: block; margin-top: 24px; font-weight: 600; font-size: 14px; color: #374151; }
-        .readonly-box { background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin-top: 8px; color: #4b5563; line-height: 1.6; }
-        
-        input, textarea, select { width: 100%; padding: 12px; margin-top: 8px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 15px; transition: border-color 0.2s; }
-        input:focus, textarea:focus, select:focus { outline: none; border-color: #2563eb; ring: 2px solid #bfdbfe; }
-        
-        button { margin-top: 32px; padding: 14px; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 16px; transition: background 0.2s; }
-        button:hover { background: #1d4ed8; }
-        
-        .back-btn { display: block; text-align: center; margin-top: 24px; color: #6b7280; text-decoration: none; font-size: 14px; font-weight: 500; }
-        .back-btn:hover { color: #111827; }
-        
-        .msg { background: #ecfdf5; color: #065f46; padding: 12px; border-radius: 8px; margin-bottom: 24px; font-size: 14px; text-align: center; border: 1px solid #a7f3d0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f1f5f9; padding: 40px 20px; color: #1e293b; }
+        .container { max-width: 750px; margin: auto; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid #f1f5f9; padding-bottom: 20px; }
+        .header-left h2 { font-size: 24px; font-weight: 700; color: #0f172a; margin-bottom: 5px; }
+        .authority-tag { font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 6px 10px; border-radius: 6px; background: #e0e7ff; color: #4338ca; display: inline-block; margin-right: 8px; }
+        .badge { padding: 6px 14px; border-radius: 99px; font-size: 13px; font-weight: 600; display: inline-block; }
+        .badge-pending { background: #fef3c7; color: #b45309; }
+        .badge-inprogress { background: #e0e7ff; color: #4338ca; }
+        .badge-completed { background: #d1fae5; color: #059669; }
+        .badge-archived { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+        label { display: block; margin-top: 24px; font-weight: 600; font-size: 14px; color: #475569; margin-bottom: 8px; }
+        .readonly-box { background: #f8fafc; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; color: #334155; line-height: 1.6; font-size: 15px; }
+        input, textarea, select { width: 100%; padding: 14px 16px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 15px; transition: all 0.2s; background: #f8fafc; color: #1e293b; }
+        input:focus, textarea:focus, select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); background: #ffffff; }
+        button { margin-top: 32px; padding: 14px; background: linear-gradient(135deg, #4f46e5, #3b82f6); color: white; border: none; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 600; font-size: 16px; }
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(59, 130, 246, 0.3); }
+        .back-btn { display: block; text-align: center; margin-top: 24px; color: #64748b; text-decoration: none; font-size: 14px; font-weight: 600; }
+        .msg { background: #ecfdf5; color: #065f46; padding: 16px; border-radius: 8px; margin-bottom: 24px; text-align: center; border: 1px solid #a7f3d0; font-weight: 500; }
+        .locked-warning { background: #fef2f2; color: #991b1b; padding: 12px 16px; border-radius: 8px; border: 1px solid #fecaca; font-size: 14px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
     </style>
 </head>
 <body>
-
 <div class="container">
+    
+    <?php if($is_archived): ?>
+        <div class="locked-warning">🔒 This ticket is archived. It is read-only and cannot be modified.</div>
+    <?php endif; ?>
+
     <?php if(isset($_GET['msg'])): ?>
         <div class="msg">✅ Changes saved successfully.</div>
     <?php endif; ?>
 
     <div class="header-flex">
-        <h2 style="font-size: 22px;">Ticket #<?php echo $ticket['id']; ?></h2>
+        <div class="header-left">
+            <h2>Ticket #<?php echo $ticket['id']; ?></h2>
+        </div>
         <div>
             <span class="authority-tag">
                 <?php 
@@ -113,10 +117,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee)) {
             <span class="badge badge-<?php echo str_replace(' ', '', strtolower($ticket['status'])); ?>">
                 <?php echo ucfirst($ticket['status']); ?>
             </span>
+            
+            <?php if($is_archived): ?>
+                <span class="badge badge-archived">Archived</span>
+            <?php endif; ?>
         </div>
     </div>
 
-    <?php if ($is_admin || $is_assignee): ?>
+    <?php if (($is_admin || $is_assignee) && !$is_archived): ?>
         <form method="POST">
             <label>Subject</label>
             <?php if ($is_admin): ?>
@@ -135,21 +143,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee)) {
             <?php if (!empty($ticket['file_path'])): ?>
                 <label>Attachment</label>
                 <div style="margin-top: 8px;">
-                    <a href="../uploads/<?php echo htmlspecialchars($ticket['file_path']); ?>" target="_blank" style="background: #e5e7eb; color: #374151; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500; display: inline-block;">
+                    <a href="../uploads/<?php echo htmlspecialchars($ticket['file_path']); ?>" target="_blank" style="background: #e2e8f0; color: #334155; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; display: inline-block;">
                         📎 View Attached File
                     </a>
                 </div>
             <?php endif; ?>
 
-            <label>Update Status Authority</label>
+            <label>Update Status</label>
             <select name="status">
                 <option value="pending" <?php if($ticket['status'] == 'pending') echo 'selected'; ?>>Pending</option>
                 <option value="inprogress" <?php if($ticket['status'] == 'inprogress') echo 'selected'; ?>>In Progress</option>
                 <option value="completed" <?php if($ticket['status'] == 'completed') echo 'selected'; ?>>Completed</option>
             </select>
 
-            <button type="submit">Save Authority Action</button>
+            <button type="submit">Save Changes</button>
         </form>
+        
     <?php else: ?>
         <label>Subject</label>
         <div class="readonly-box"><?php echo htmlspecialchars($ticket['name']); ?></div>
@@ -160,23 +169,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && ($is_admin || $is_assignee)) {
         <?php if (!empty($ticket['file_path'])): ?>
             <label>Attachment</label>
             <div style="margin-top: 8px;">
-                <a href="../uploads/<?php echo htmlspecialchars($ticket['file_path']); ?>" target="_blank" style="background: #e5e7eb; color: #374151; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 500; display: inline-block;">
+                <a href="../uploads/<?php echo htmlspecialchars($ticket['file_path']); ?>" target="_blank" style="background: #e2e8f0; color: #334155; padding: 8px 12px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; display: inline-block;">
                     📎 View Attached File
                 </a>
             </div>
         <?php endif; ?>
         
         <label>Current Status</label>
-        <div class="readonly-box" style="font-weight: 600;">
+        <div class="readonly-box" style="font-weight: 600; display: inline-block; margin-bottom: 20px;">
             <?php echo ucfirst($ticket['status']); ?>
         </div>
-        <p style="margin-top: 20px; font-size: 13px; color: #6b7280; text-align: center; font-style: italic;">
-            Note: As the creator, you can no longer modify this ticket once it has been processed.
-        </p>
+        
+        <?php if(!$is_archived): ?>
+            <p style="margin-top: 20px; font-size: 13px; color: #64748b; text-align: center; font-style: italic;">
+                Note: As the creator, you can no longer modify this ticket once it has been processed.
+            </p>
+        <?php endif; ?>
     <?php endif; ?>
 
-    <a href="../index.php" class="back-btn">← Back to Dashboard</a>
+    <a href="../index.php<?php echo $is_archived ? '?view=archived' : ''; ?>" class="back-btn">← Back to Dashboard</a>
 </div>
-
 </body>
 </html>
