@@ -1,32 +1,36 @@
 <?php
-// pages/delete_ticket.php
 session_start();
 require '../config/db.php';
 
-// 1. Check if ID exists
-if (!isset($_GET['id']) || !isset($_SESSION['user_id'])) {
-    header("Location: ../index.php");
+// 1. Security Check
+if (!isset($_SESSION['user_id'])) {
+    header("Location: ../auth/login.php");
     exit;
 }
 
-$ticket_id = $_GET['id'];
+// 2. Role Check (Only Admin can soft-delete)
 $user_id = $_SESSION['user_id'];
+$role_stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+$role_stmt->execute([$user_id]);
+$user_role = $role_stmt->fetchColumn();
 
-// 2. Security Check: Only the CREATOR can delete the ticket
-// We run a query to see if this ticket belongs to the logged-in user
-$stmt = $pdo->prepare("SELECT id FROM tickets WHERE id = ? AND created_by = ?");
-$stmt->execute([$ticket_id, $user_id]);
-$ticket = $stmt->fetch();
+if ($user_role !== 'admin') {
+    die("Unauthorized: Only admins can perform this action.");
+}
 
-if ($ticket) {
-    // 3. Delete the Ticket
-    $del_stmt = $pdo->prepare("DELETE FROM tickets WHERE id = ?");
-    $del_stmt->execute([$ticket_id]);
+// 3. Perform Soft Delete
+if (isset($_GET['id'])) {
+    $ticket_id = $_GET['id'];
     
-    // Redirect to Dashboard with a success flag (optional)
-    header("Location: ../index.php?msg=deleted");
-    exit;
-} else {
-    die("❌ Error: You cannot delete this ticket (Access Denied).");
+    // We UPDATE the flag instead of DELETING the row
+    $sql = "UPDATE tickets SET is_deleted = 1 WHERE id = ?";
+    $stmt = $pdo->prepare($sql);
+    
+    if ($stmt->execute([$ticket_id])) {
+        header("Location: ../index.php?msg=deleted");
+        exit;
+    } else {
+        die("Error updating record.");
+    }
 }
 ?>
